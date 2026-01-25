@@ -1,11 +1,13 @@
 FROM postgres:alpine AS builder
 
+ARG PGVECTOR_TAG
+
 # install build tools
 RUN apk add --no-cache git make clang19 llvm19
 
 # build pgvector
 RUN cd /tmp && \
-    git clone --branch v0.8.1 https://github.com/pgvector/pgvector.git && \
+    git clone --branch ${PGVECTOR_TAG} https://github.com/pgvector/pgvector.git && \
     cd pgvector && \
     make && \
     make install
