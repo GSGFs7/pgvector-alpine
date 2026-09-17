@@ -14,7 +14,7 @@ But everything is fine on alpine based images. So, I try to build an alpine base
 
 ## Usage
 
-Same as pgvector. Pulling the image from dorker hub:
+Same as pgvector. Pulling the image from Docker Hub:
 
 ```bash
 docker pull gsgfs/pgvector-alpine
