@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  DEFAULT_PGVECTOR: "v0.8.7"
+  DEFAULT_PGVECTOR: "v0.8"
   DEFAULT_POSTGRES: "19"
 
 jobs:
@@ -20,10 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         postgres: ["16", "17", "18", "19"]
-        pgvector: ["v0.8.6", "v0.8.7"]
-        exclude:
-          - postgres: "19"
-            pgvector: "v0.8.6"
+        pgvector: ["v0.8"]
 
     steps:
       - name: Checkout code
@@ -48,13 +45,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve PostgreSQL version
-        id: pg
+      - name: Resolve versions
+        id: ver
         run: |
           IMAGE="postgres:${{ matrix.postgres }}-alpine3.24"
           docker pull -q "$IMAGE"
           PG_VERSION=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" | sed -n 's/^PG_VERSION=//p')
-          echo "version=${PG_VERSION:?failed to resolve PG_VERSION}" >> "$GITHUB_OUTPUT"
+          PGVECTOR_TAG=$(git ls-remote --tags --refs https://github.com/pgvector/pgvector.git "${{ matrix.pgvector }}.*" \
+            | awk -F/ '{print $NF}' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -n1)
+          echo "pg=${PG_VERSION:?failed to resolve PG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "pgvector=${PGVECTOR_TAG:?failed to resolve PGVECTOR_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -64,13 +67,14 @@ jobs:
           platforms: linux/amd64,linux/arm64
           pull: true
           build-args: |
-            PG_IMAGE=postgres:${{ steps.pg.outputs.version }}-alpine3.24
-            PGVECTOR_TAG=${{ matrix.pgvector }}
+            PG_IMAGE=postgres:${{ steps.ver.outputs.pg }}-alpine3.24
+            PGVECTOR_TAG=${{ steps.ver.outputs.pgvector }}
           tags: |
             ${{ steps.image.outputs.name }}:${{ matrix.pgvector }}-pg${{ matrix.postgres }}
-            ${{ steps.image.outputs.name }}:${{ matrix.pgvector }}-pg${{ steps.pg.outputs.version }}
+            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ matrix.postgres }}
+            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ steps.ver.outputs.pg }}
             ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}', steps.image.outputs.name, matrix.postgres) || '' }}
-            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}', steps.image.outputs.name, steps.pg.outputs.version) || '' }}
+            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}', steps.image.outputs.name, steps.ver.outputs.pg) || '' }}
             ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && matrix.postgres == env.DEFAULT_POSTGRES && format('{0}:latest', steps.image.outputs.name) || '' }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
