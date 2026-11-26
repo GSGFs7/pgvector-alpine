@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-and-push:
-    name: Build pgvector ${{ matrix.pgvector }} / PostgreSQL ${{ matrix.postgres }}
+    name: Build pgvector ${{ matrix.pgvector }} / PostgreSQL ${{ matrix.postgres }} (${{ matrix.variant }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,12 +21,23 @@ jobs:
       matrix:
         postgres: ["16", "17", "18", "19"]
         pgvector: ["v0.8"]
+        variant: [portable, avx512]
+        include:
+          - variant: portable
+            platforms: linux/amd64,linux/arm64
+            optflags: ""
+            suffix: ""
+          - variant: avx512
+            platforms: linux/amd64
+            optflags: -march=x86-64-v4
+            suffix: -avx512
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up QEMU
+        if: matrix.variant == 'portable'
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -64,19 +75,20 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platforms }}
           pull: true
           build-args: |
             PG_IMAGE=postgres:${{ steps.ver.outputs.pg }}-alpine3.24
             PGVECTOR_TAG=${{ steps.ver.outputs.pgvector }}
+            PGVECTOR_OPTFLAGS=${{ matrix.optflags }}
           tags: |
-            ${{ steps.image.outputs.name }}:${{ matrix.pgvector }}-pg${{ matrix.postgres }}
-            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ matrix.postgres }}
-            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ steps.ver.outputs.pg }}
-            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}', steps.image.outputs.name, matrix.postgres) || '' }}
-            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}', steps.image.outputs.name, steps.ver.outputs.pg) || '' }}
-            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && matrix.postgres == env.DEFAULT_POSTGRES && format('{0}:latest', steps.image.outputs.name) || '' }}
+            ${{ steps.image.outputs.name }}:${{ matrix.pgvector }}-pg${{ matrix.postgres }}${{ matrix.suffix }}
+            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ matrix.postgres }}${{ matrix.suffix }}
+            ${{ steps.image.outputs.name }}:${{ steps.ver.outputs.pgvector }}-pg${{ steps.ver.outputs.pg }}${{ matrix.suffix }}
+            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}{2}', steps.image.outputs.name, matrix.postgres, matrix.suffix) || '' }}
+            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && format('{0}:pg{1}{2}', steps.image.outputs.name, steps.ver.outputs.pg, matrix.suffix) || '' }}
+            ${{ matrix.pgvector == env.DEFAULT_PGVECTOR && matrix.postgres == env.DEFAULT_POSTGRES && format('{0}:latest{1}', steps.image.outputs.name, matrix.suffix) || '' }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha,scope=${{ matrix.pgvector }}-pg${{ matrix.postgres }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.pgvector }}-pg${{ matrix.postgres }}
+          cache-from: type=gha,scope=${{ matrix.pgvector }}-pg${{ matrix.postgres }}-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.pgvector }}-pg${{ matrix.postgres }}-${{ matrix.variant }}

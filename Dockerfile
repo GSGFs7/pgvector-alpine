@@ -2,6 +2,7 @@ ARG PG_IMAGE=postgres:alpine
 
 FROM ${PG_IMAGE} AS builder
 ARG PGVECTOR_TAG
+ARG PGVECTOR_OPTFLAGS=""
 
 # install build tools
 # - build-base: provides gcc/make for compiling the extension
@@ -12,8 +13,8 @@ RUN LLVM_VER="$(sed -n '/^CLANG *=/{s/.*clang-//p;q}' "$(pg_config --pkglibdir)/
 # build pgvector
 RUN git clone --depth 1 --branch "${PGVECTOR_TAG}" \
         https://github.com/pgvector/pgvector.git /tmp/pgvector && \
-    make -C /tmp/pgvector -j"$(nproc)" && \
-    make -C /tmp/pgvector install
+    make -C /tmp/pgvector -j"$(nproc)" OPTFLAGS="${PGVECTOR_OPTFLAGS}" && \
+    make -C /tmp/pgvector OPTFLAGS="${PGVECTOR_OPTFLAGS}" install
 
 # use a new base image
 FROM ${PG_IMAGE}
